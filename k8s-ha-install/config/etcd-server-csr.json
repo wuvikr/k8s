@@ -1,0 +1,32 @@
+{
+  "CN": "etcd",
+  "hosts": [
+    "127.0.0.1",
+    "master01",
+    "master02",
+    "master03",
+    "node01",
+    "node02",
+    "node03",
+    "k8s-master-lb",
+    "10.0.0.71",
+    "10.0.0.72",
+    "10.0.0.73",
+    "10.0.0.74",
+    "10.0.0.75",
+    "10.0.0.199"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "CN",
+      "ST": "Shanghai",
+      "L": "Shanghai",
+      "O": "etcd",
+      "OU": "Etcd Security"
+    }
+  ]
+}
