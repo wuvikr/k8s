@@ -1,0 +1,5 @@
+CHART NAME: {{ .Chart.Name }}
+CHART VERSION: {{ .Chart.Version }}
+APP VERSION: {{ .Chart.AppVersion }}
+
+服务已经开启web控制端，使用NodePort暴露。
