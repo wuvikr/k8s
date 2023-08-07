@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  name: rabbitmq:3.8.3-management
+  name: rabbitmq:3.10.25-management
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
