@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-canary-new
+  annotations:
+    # 开启Canary功能
+    nginx.ingress.kubernetes.io/canary: "true"
+    # 请求头为user
+    #nginx.ingress.kubernetes.io/canary-by-header: "user"
+    # 当请求头user的值为kubesre时，请求会被路由到新版本svc my-nginx-new 中。
+    #nginx.ingress.kubernetes.io/canary-by-header-value: "canary"
+    # 将所有流量的10%转发到灰度环境
+    nginx.ingress.kubernetes.io/canary-weight: "10"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: canary.wuvikr.top
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: my-nginx-new
+            port:
+              number: 80
