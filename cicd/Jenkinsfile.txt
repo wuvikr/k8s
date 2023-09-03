@@ -1,0 +1,199 @@
+pipeline {
+  agent {
+    kubernetes {
+      cloud 'kubekey-k8s'
+      slaveConnectTimeout 1200
+      workspaceVolume hostPathWorkspaceVolume(hostPath: "/opt/jenkins_home")
+      yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  hostAliases:
+  - ip: "10.0.0.203"
+    hostnames:
+    - "jenkins.wuvikr.top"
+  - ip: "10.0.0.202"
+    hostnames:
+    - "gitlab.wuvikr.top"
+  containers:
+  - name: jnlp
+    image: 'jenkins/jnlp-slave:4.13.3-1-jdk11'
+    imagePullPolicy: IfNotPresent
+    args: [\'$(JENKINS_SECRET)\', \'$(JENKINS_NAME)\']
+    volumeMounts:
+    - mountPath: "/etc/localtime"
+      name: "localtime"
+      readOnly: false 
+  - name: "build"
+    image: "maven:3.5.3"
+    imagePullPolicy: "IfNotPresent"
+    command:
+    - "cat"
+    env:
+    - name: "LANGUAGE"
+      value: "en_US:en"
+    - name: "LC_ALL"
+      value: "en_US.UTF-8"
+    - name: "LANG"
+      value: "en_US.UTF-8"
+    tty: true
+    volumeMounts:
+    - mountPath: "/etc/localtime"
+      name: "localtime"
+    - mountPath: "/root/.m2/"
+      name: "cachedir"
+      readOnly: false
+  - name: "kubectl"
+    image: "registry.cn-shanghai.aliyuncs.com/wuvikr-test/kubectl:v1.23.10"
+    imagePullPolicy: "IfNotPresent"
+    command:
+    - "cat"
+    env:
+    - name: "LANGUAGE"
+      value: "en_US:en"
+    - name: "LC_ALL"
+      value: "en_US.UTF-8"
+    - name: "LANG"
+      value: "en_US.UTF-8"
+    tty: true
+    volumeMounts:
+    - mountPath: "/etc/localtime"
+      name: "localtime"
+      readOnly: false
+  - name: "docker"
+    image: "docker:24.0.5-git"
+    imagePullPolicy: "IfNotPresent"
+    command:
+    - "cat"
+    env:
+    - name: "LANGUAGE"
+      value: "en_US:en"
+    - name: "LC_ALL"
+      value: "en_US.UTF-8"
+    - name: "LANG"
+      value: "en_US.UTF-8"
+    tty: true
+    volumeMounts:
+    - mountPath: "/etc/localtime"
+      name: "localtime"
+      readOnly: false
+    - mountPath: "/var/run/docker.sock"
+      name: "dockersock"
+      readOnly: false
+  restartPolicy: "Never"
+  nodeSelector:
+    build: "true"
+  volumes:
+  - name: "dockersock"
+    hostPath:
+      path: "/var/run/docker.sock"
+  - name: "localtime"
+    hostPath:
+      path: "/usr/share/zoneinfo/Asia/Shanghai"
+  - name: "cachedir"
+    hostPath:
+      path: "/opt/m2"
+'''
+ }
+}
+
+  environment {
+    COMMIT_ID = ""
+    IMAGE_REGISTRY = "registry.cn-shanghai.aliyuncs.com"
+    REPOSTORY = "wuvikr-test"
+    IMAGE_NAME = "spring-boot-project"
+    NAMESPACE = "kubernetes"
+    TAG = ""
+  }
+
+  parameters {
+    gitParameter(branch: '', branchFilter: 'origin/(.*)', defaultValue: '', description: 'Branch for build and deploy', name: 'BRANCH', quickFilterEnabled: false, selectedValue: 'NONE', sortMode: 'NONE', tagFilter: '*', type: 'PT_BRANCH')
+  }
+  
+  stages {
+    stage('Pulling Code') {
+      parallel {
+        stage('Pulling Code by Jenkins') {
+          when {
+            expression {
+              env.gitlabBranch == null
+            }
+          }
+
+          steps {
+            sh 'pwd'
+            git(changelog: true, poll: true, url: 'http://gitlab.wuvikr.top/kubernetes/spring-boot-project.git', branch: "${BRANCH}", credentialsId: 'gitlab-account-wuvikr')
+
+            script {
+              COMMIT_ID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
+              TAG = BUILD_TAG + '-' + COMMIT_ID
+              println "Current branch is ${BRANCH}, Commit ID is ${COMMIT_ID}, Image TAG is ${TAG}"
+            }
+          }
+        }
+
+        stage('Pulling Code by trigger') {
+          when {
+            expression {
+              env.gitlabBranch != null
+            }
+          }
+
+          steps {
+            git(url: 'http://gitlab.wuvikr.top/kubernetes/spring-boot-project.git', branch: env.gitlabBranch, changelog: true, poll: true, credentialsId: 'gitlab-key')
+            script {
+              COMMIT_ID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
+              TAG = BUILD_TAG + '-' + COMMIT_ID
+              println "Current branch is ${env.gitlabBranch}, Commit ID is ${COMMIT_ID}, Image TAG is ${TAG}"
+            }
+          }
+        }
+      }
+    }
+/*
+    stage('Building') {
+      steps {
+        container(name: 'build') {
+          sh """ 
+            pwd
+            mvn clean install -DskipTests
+            ls target/*
+            """
+        }
+      }
+    }
+ 
+    stage('Docker build for creating image') {
+      environment {
+        ALIYUN_ACR = credentials('Aliyun-acr')
+      }
+
+      steps {
+        container(name: 'docker') {
+          sh """
+            pwd
+            echo ${ALIYUN_ACR_USR} ${ALIYUN_ACR_PSW} ${TAG}
+            docker build -t ${IMAGE_REGISTRY}/${REPOSTORY}/${IMAGE_NAME}:${TAG} .
+            docker login -u ${ALIYUN_ACR_USR} -p ${ALIYUN_ACR_PSW} ${IMAGE_REGISTRY}
+            docker push ${IMAGE_REGISTRY}/${REPOSTORY}/${IMAGE_NAME}:${TAG}
+            """
+        }
+      }
+    }
+*/
+    stage('Deploying to K8s') {
+
+      steps {
+        withCredentials([file(credentialsId: 'kubekey-k8s', variable: 'KUBECONFIG')]) {
+          container(name: 'kubectl'){
+            sh """
+              pwd
+              kubectl version
+              kubectl --kubeconfig ${KUBECONFIG} get pod -A
+              """
+          }
+        }
+      }
+    }
+  }
+}
